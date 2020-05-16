@@ -3,7 +3,9 @@ This is the TCP final project
 
 How to use:
 
+Option 1: use the Make file and then go to .. obj directory to access the executables
 
+Option 2: follow the steps below:
 STEP 1: compile dependencies
 gcc packet.c -c
 gcc common.c -c
