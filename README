@@ -1,1 +1,17 @@
 This is the TCP final project
+
+
+How to use:
+
+
+STEP 1: compile dependencies
+gcc packet.c -c
+gcc common.c -c
+
+STEP 2: compile sender and receiver
+gcc rdt_receiver.c -c
+gcc rdt_sender.c -c
+
+STEP 3: build (compile + link) sender and receiver
+gcc -o receiver common.o rdt_receiver.o packet.o
+gcc -o sender common.o rdt_sender.o packet.o
