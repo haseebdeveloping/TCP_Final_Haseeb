@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <netdb.h>
 #include <sys/types.h> 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -9,25 +10,80 @@
 #include <signal.h>
 #include <sys/time.h>
 #include <time.h>
+#include <sys/types.h>
+#include <signal.h>
+#include <time.h>
 #include <assert.h>
+#include <stdio.h>
+
+
 
 #include"packet.h"
 #include"common.h"
 
 #define STDIN_FD    0
-#define RETRY  120 //milli second 
+#define RETRY  1500 //milli second 
+#define CWND 10
 
 int next_seqno=0;
 int send_base=0;
+//int window_base;
 int window_size = 1;
+int unackPackets;
 
 int sockfd, serverlen;
 struct sockaddr_in serveraddr;
 struct itimerval timer; 
 tcp_packet *sndpkt;
 tcp_packet *recvpkt;
-sigset_t sigmask;       
+tcp_packet *cwnd_buffer[10];
+sigset_t sigmask;    
 
+
+typedef struct node_packet{
+    tcp_packet *packet;
+    struct node_packet *nextPacket;
+} node_packet;
+
+node_packet *cwnd_begin = 0;   
+node_packet *cwnd_end;
+
+/* .pushes a packet onto the cwnd lifo. Because the
+    cwnd is a fixed size window, it is our
+    responsibility to ensure that we don't cross
+    the cwnd boundary.
+*/
+void push_packet(tcp_packet *packet){
+    if (cwnd_begin == 0){
+            cwnd_begin = malloc(sizeof(node_packet));
+            cwnd_begin-> packet = packet;
+            cwnd_begin-> nextPacket = 0;
+            cwnd_end = cwnd_begin;
+    }
+    else{
+        cwnd_end -> nextPacket = malloc(sizeof(node_packet));
+        cwnd_end = cwnd_end -> nextPacket;
+        cwnd_end -> packet = packet;
+        cwnd_end -> nextPacket = 0;
+    }
+    
+    
+}
+
+/* pop frees the address pointed to by begin and reassigns it
+    to the next element in LIFO.
+    */
+void pop_packet(){
+    if (cwnd_begin == 0){
+        return;
+    }
+    else{
+        node_packet *temp = cwnd_begin;
+        cwnd_begin = cwnd_begin -> nextPacket;
+        free(temp);
+        return;
+    }
+}
 
 void resend_packets(int sig)
 {
@@ -36,7 +92,7 @@ void resend_packets(int sig)
         //Resend all packets range between 
         //sendBase and nextSeqNum
         VLOG(INFO, "Timout happend");
-        if(sendto(sockfd, sndpkt, TCP_HDR_SIZE + get_data_size(sndpkt), 0, 
+        if(sendto(sockfd, sndpkt, sizeof(*sndpkt), 0, 
                     ( const struct sockaddr *)&serveraddr, serverlen) < 0)
         {
             error("sendto");
@@ -73,6 +129,14 @@ void init_timer(int delay, void (*sig_handler)(int))
 
     sigemptyset(&sigmask);
     sigaddset(&sigmask, SIGALRM);
+}
+
+/* Sleep for given number of seconds. Can be interrupted by
+ singnals.
+*/
+void waitFor (unsigned int secs) {
+    unsigned int retTime = time(0) + secs;   // Get finishing time.
+    while (time(0) < retTime);               // Loop until it arrives.
 }
 
 int main (int argc, char **argv)
